@@ -429,6 +429,8 @@ h1.hasn #uNm{display:inline}
    - SOUM_OWNER_KEY : كلمة سر تخليكِ صاحبة الموقع؛ افتحي الموقع مرة بالشكل  ?owner=كلمتك  لتفعيل نشر الأخبار. */
 window.SOUM_DB_URL='https://soum-190f1-default-rtdb.europe-west1.firebasedatabase.app';
 window.SOUM_OWNER_KEY='';
+window.SOUM_OWNER_SALT='5f5c7cd9a3b8ed034ce185775489a664';
+window.SOUM_OWNER_HASH='82de04c8af6400bbeca9c69187d3116d0c6cee7b91ed24a2bd0a70ddf7dce48e';
 /* نشر الأخبار لحسابك أنتِ فقط (حساب جوجل الأساسي):
    - SOUM_FB : إعدادات تطبيق الويب من Firebase، بالشكل  {apiKey:'...',authDomain:'...',projectId:'...'}
    - SOUM_OWNER_EMAIL : إيميل جوجل الأساسي (بحروف صغيرة).
@@ -467,7 +469,15 @@ window.SB=function(id){return id&&String(id).indexOf('data:')===0?id:'/_blob/'+i
       set:function(o){return io.put(c,id,o)},update:function(o){return io.put(c,id,o,true)},
       delete:function(){return io.del(c,id)}}}};
   var uid=LS.getItem('soum_uid');if(!uid){uid='u'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);LS.setItem('soum_uid',uid)}
-  try{var m=location.search.match(/[?&]owner=([^&]+)/);if(m&&window.SOUM_OWNER_KEY&&decodeURIComponent(m[1])===window.SOUM_OWNER_KEY)LS.setItem('soum_owner','1')}catch(e){}
+  var ownerChk=Promise.resolve();
+  try{var m=location.search.match(/[?&]owner=([^&]+)/);
+    if(m&&window.SOUM_OWNER_HASH&&window.crypto&&crypto.subtle){ownerChk=(async function(){
+      var te=new TextEncoder(),k=await crypto.subtle.importKey('raw',te.encode(decodeURIComponent(m[1])),'PBKDF2',false,['deriveBits']);
+      var b=await crypto.subtle.deriveBits({name:'PBKDF2',salt:te.encode(window.SOUM_OWNER_SALT),iterations:300000,hash:'SHA-256'},k,256);
+      var hx=Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,'0')}).join('');
+      if(hx===window.SOUM_OWNER_HASH){LS.setItem('soum_owner','1');try{history.replaceState(null,'',location.pathname+location.hash)}catch(e){}}
+    })().catch(function(){})}
+  }catch(e){}
   var user={isOwner:function(){return window.SOUM_FB?gOwner:LS.getItem('soum_owner')==='1'},canEdit:function(){return this.isOwner()},id:function(){return Promise.resolve(uid)},profiles:function(){return Promise.resolve({})}};
   var assets={upload:function(b){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res({id:r.result,url:r.result})};r.onerror=rej;r.readAsDataURL(b)})}};
   function ld(src){return new Promise(function(r,j){var e=document.createElement('script');e.src=src;e.onload=r;e.onerror=j;document.head.appendChild(e)})}
@@ -483,7 +493,8 @@ window.SB=function(id){return id&&String(id).indexOf('data:')===0?id:'/_blob/'+i
     gOwner=!!(fbU.email&&fbU.emailVerified&&fbU.email.toLowerCase()===String(window.SOUM_OWNER_EMAIL).toLowerCase());
     return gOwner;
   }
-  var ready=(window.SOUM_FB&&LS.getItem('soum_admin')==='1')?Promise.race([fbAuth(false).catch(function(){}),new Promise(function(r){setTimeout(r,6000)})]):Promise.resolve();
+  var ready0=(window.SOUM_FB&&LS.getItem('soum_admin')==='1')?Promise.race([fbAuth(false).catch(function(){}),new Promise(function(r){setTimeout(r,6000)})]):Promise.resolve();
+  var ready=ownerChk.then(function(){return ready0});
   document.addEventListener('DOMContentLoaded',function(){
     var b=document.getElementById('admBtn');if(!b||!window.SOUM_FB)return;
     var on=LS.getItem('soum_admin')==='1';
